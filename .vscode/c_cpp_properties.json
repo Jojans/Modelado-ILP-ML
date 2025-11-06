@@ -1,0 +1,37 @@
+{
+  "configurations": [
+    {
+      "name": "Win64-FFTW",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "C:/msys64/ucrt64/include"
+      ],
+      "defines": [
+        "_USE_MATH_DEFINES"
+      ],
+      "compilerPath": "C:/msys64/ucrt64/bin/g++.exe",
+      "cStandard": "c11",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "windows-gcc-x64"
+    },
+    {
+      "name": "CUDA",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include",
+        "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/extras/CUPTI/include",
+        "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/samples/common/inc",
+        "C:/msys64/ucrt64/include"
+      ],
+      "defines": [
+        "_USE_MATH_DEFINES",
+        "__CUDACC__"
+      ],
+        "compilerPath": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/bin/nvcc.exe",
+        "cStandard": "c11",
+        "cppStandard": "c++17",
+        "intelliSenseMode": "windows-gcc-x64"
+    }
+  ],
+  "version": 4
+}
