@@ -1,15 +1,47 @@
 #include <iostream>
 #include <vector>
-#include <random>
 #include <chrono>
-using namespace std;
+#include <cstdlib>
+#include <omp.h>
 
-void spmv_cpu(int rows, const vector<float>& values, const vector<int>& col_idx,
-              const vector<int>& row_ptr, const vector<float>& x, vector<float>& y) {
+int main(int argc, char** argv) {
+    if (argc < 3) {
+        std::cerr << "Uso: spmv_cpu <rows> <nnz>\n";
+        return 1;
+    }
+
+    int rows = atoi(argv[1]);
+    int nnz  = atoi(argv[2]);
+
+    std::vector<int> row_ptr(rows + 1);
+    std::vector<int> col_idx(nnz);
+    std::vector<float> values(nnz);
+    std::vector<float> x(rows, 1.0f);
+    std::vector<float> y(rows, 0.0f);
+
+    // Generar matriz CSR simple
+    int nnz_per_row = nnz / rows;
+    for (int i = 0; i <= rows; ++i) row_ptr[i] = i * nnz_per_row;
+    for (int i = 0; i < nnz; ++i) {
+        col_idx[i] = i % rows;
+        values[i] = 1.0f;
+    }
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+
+    // SpMV paralelizado
+    #pragma omp parallel for
     for (int i = 0; i < rows; ++i) {
         float sum = 0.0f;
-        for (int j = row_ptr[i]; j < row_ptr[i + 1]; ++j)
+        for (int j = row_ptr[i]; j < row_ptr[i + 1]; ++j) {
             sum += values[j] * x[col_idx[j]];
+        }
         y[i] = sum;
     }
+
+    auto t2 = std::chrono::high_resolution_clock::now();
+    double elapsed = std::chrono::duration<double>(t2 - t1).count();
+
+    std::cout << elapsed << std::endl;
+    return 0;
 }

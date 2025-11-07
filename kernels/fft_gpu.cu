@@ -1,49 +1,97 @@
-#define _USE_MATH_DEFINES
+#include <cstdio>
 #include <cmath>
-#include <iostream>
-#include <vector>
-#include <chrono>
-
 #include <cuda_runtime.h>
-#include <cufft.h>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+#define PI 3.14159265358979323846
 
-using namespace std;
+struct Complex {
+    float real;
+    float imag;
+};
 
-int main() {
-    int N = 1 << 20;  // mismo tamaño que FFTW
-    cout << "Ejecutando cuFFT con N=" << N << " puntos..." << endl;
+__device__ Complex complexAdd(Complex a, Complex b) {
+    Complex c;
+    c.real = a.real + b.real;
+    c.imag = a.imag + b.imag;
+    return c;
+}
 
-    vector<cufftComplex> h_data(N);
-    for (int i = 0; i < N; ++i) {
-        h_data[i].x = sin(2.0 * M_PI * i / N);
-        h_data[i].y = 0.0f;
+__device__ Complex complexSub(Complex a, Complex b) {
+    Complex c;
+    c.real = a.real - b.real;
+    c.imag = a.imag - b.imag;
+    return c;
+}
+
+__device__ Complex complexMul(Complex a, Complex b) {
+    Complex c;
+    c.real = a.real * b.real - a.imag * b.imag;
+    c.imag = a.real * b.imag + a.imag * b.real;
+    return c;
+}
+
+__global__ void fftKernel(Complex *data, int n, int step) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int m = step * 2;
+
+    if (i < n / 2) {
+        int j = i % step;
+        int k = i - j;
+        Complex t = data[k + j];
+        Complex u = data[k + j + step];
+        float angle = -PI * j / step;
+        Complex w = {cosf(angle), sinf(angle)};
+        Complex v = complexMul(w, u);
+
+        data[k + j] = complexAdd(t, v);
+        data[k + j + step] = complexSub(t, v);
+    }
+}
+
+void fftGPU(Complex *h_data, int N) {
+    Complex *d_data;
+    cudaMalloc(&d_data, N * sizeof(Complex));
+    cudaMemcpy(d_data, h_data, N * sizeof(Complex), cudaMemcpyHostToDevice);
+
+    for (int step = 1; step < N; step *= 2) {
+        int threads = 256;
+        int blocks = (N / 2 + threads - 1) / threads;
+        fftKernel<<<blocks, threads>>>(d_data, N, step);
+        cudaDeviceSynchronize();
     }
 
-    cufftComplex* d_data;
-    cudaMalloc(&d_data, sizeof(cufftComplex) * N);
-    cudaMemcpy(d_data, h_data.data(), sizeof(cufftComplex) * N, cudaMemcpyHostToDevice);
-
-    cufftHandle plan;
-    cufftPlan1d(&plan, N, CUFFT_C2C, 1);
-
-    auto start = chrono::high_resolution_clock::now();
-    cufftExecC2C(plan, d_data, d_data, CUFFT_FORWARD);
-    cudaDeviceSynchronize();
-    auto end = chrono::high_resolution_clock::now();
-
-    double elapsed = chrono::duration<double>(end - start).count();
-    cout << fixed << "Tiempo cuFFT: " << elapsed << " s" << endl;
-
-    cudaMemcpy(h_data.data(), d_data, sizeof(cufftComplex) * N, cudaMemcpyDeviceToHost);
-    cout << "Resultado (primeros 5):\n";
-    for (int i = 0; i < 5; ++i)
-        cout << h_data[i].x << " + " << h_data[i].y << "i\n";
-
-    cufftDestroy(plan);
+    cudaMemcpy(h_data, d_data, N * sizeof(Complex), cudaMemcpyDeviceToHost);
     cudaFree(d_data);
+}
+
+int main(int argc, char **argv) {
+    if (argc < 2) {
+        printf("Uso: fft_gpu N\n");
+        return 1;
+    }
+    int N = atoi(argv[1]);
+
+    Complex *data = (Complex *)malloc(N * sizeof(Complex));
+    for (int i = 0; i < N; i++) {
+        data[i].real = sinf(2.0f * PI * i / N);
+        data[i].imag = 0.0f;
+    }
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start);
+    fftGPU(data, N);
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+
+    float ms = 0.0f;
+    cudaEventElapsedTime(&ms, start, stop);
+    printf("%f\n", ms / 1000.0f);
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    free(data);
     return 0;
 }
