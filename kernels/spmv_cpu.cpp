@@ -19,7 +19,6 @@ int main(int argc, char** argv) {
     std::vector<float> x(rows, 1.0f);
     std::vector<float> y(rows, 0.0f);
 
-    // Generar matriz CSR simple
     int nnz_per_row = nnz / rows;
     for (int i = 0; i <= rows; ++i) row_ptr[i] = i * nnz_per_row;
     for (int i = 0; i < nnz; ++i) {

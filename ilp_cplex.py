@@ -1,13 +1,13 @@
-import argparse, math, sys, os, json, subprocess, time, threading
+import argparse, sys, os, json, subprocess, time, threading, csv, tempfile
 import pulp
 from contextlib import contextmanager
 from pynvml import nvmlInit, nvmlShutdown, nvmlDeviceGetHandleByIndex, nvmlDeviceGetPowerUsage
 
-POWER = {"CPU": 80.0} # W (aproximado)
-
+# energia en GPU (J)
 @contextmanager
-def gpu_monitor(interval=0.05):
+def gpu_monitor(interval=0.05): # intervalo de muestreo en segundos (0.05s)
     nvmlInit()
+    # 
     handle = nvmlDeviceGetHandleByIndex(0)
     samples = []
     stop_flag = [False]
@@ -15,7 +15,7 @@ def gpu_monitor(interval=0.05):
     def sampler():
         while not stop_flag[0]:
             try:
-                power_w = nvmlDeviceGetPowerUsage(handle) / 1000.0  # W
+                power_w = nvmlDeviceGetPowerUsage(handle) / 1000.0  # Salida en W
                 samples.append((time.time(), power_w))
             except:
                 pass
@@ -23,12 +23,26 @@ def gpu_monitor(interval=0.05):
 
     t = threading.Thread(target=sampler)
     t.start()
+    start_time = time.time()
+
     try:
         yield samples
     finally:
         stop_flag[0] = True
         t.join()
         nvmlShutdown()
+
+        # calcular energia total usando integracion trapezoidal
+        energy = 0.0
+        for i in range(1, len(samples)):
+            dt = samples[i][0] - samples[i-1][0]
+            avg_p = (samples[i][1] + samples[i-1][1]) / 2
+            energy += avg_p * dt
+
+        print(f"[GPU Monitor] Tiempo total: {time.time() - start_time:.2f}s, Energía total: {energy:.2f}J")
+
+# energia en CPU (J)
+# falta...
 
 def compile_kernel(op, backend):
     src_dir = "./kernels"
@@ -66,37 +80,6 @@ def run_kernel_real(op, params, backend):
         raise RuntimeError(f"Kernel {op} ({backend}) no devolvió un tiempo válido.")
     return elapsed
 
-
-def measure_time_energy(op, params, backend, repeats=3):
-    times = []
-    energies = []
-
-    for i in range(repeats):
-        print(f"[{backend}] Ejecución {i+1}/{repeats} de {op}...")
-        if backend == "GPU":
-            with gpu_monitor() as samples:
-                t0 = time.time()
-                run_kernel_real(op, params, backend)
-                t1 = time.time()
-            # Integrar energía (J = W*s)
-            energy_j = 0.0
-            for j in range(1, len(samples)):
-                dt = samples[j][0] - samples[j-1][0]
-                avg_p = (samples[j][1] + samples[j-1][1]) / 2
-                energy_j += avg_p * dt
-            times.append(t1 - t0)
-            energies.append(energy_j)
-        else:
-            # CPU — no se mide potencia, solo tiempo
-            t0 = time.time()
-            elapsed = run_kernel_real(op, params, backend)
-            t1 = time.time()
-            times.append(elapsed)
-            energies.append((t1 - t0) * POWER["CPU"])  # aproximado
-
-    # Promedios
-    return sum(times) / len(times), sum(energies) / len(energies)
-
 def get_cplex_solver_instance(msg=False):
     try:
         solver = pulp.CPLEX_PY(msg=msg)
@@ -108,17 +91,17 @@ def get_cplex_solver_instance(msg=False):
             return solver
     except Exception:
         pass
-    raise RuntimeError("CPLEX no está disponible o no configurado correctamente.")
+    raise RuntimeError("CPLEX Error")
 
 
-def build_and_solve_ilp_cplex(op, params, alpha=0.5, beta=0.5):
+def build_and_solve_ilp_cplex(op, params, alpha, beta):
     print(f"\n=== Midiendo CPU ===")
     t_cpu, e_cpu = measure_time_energy(op, params, "CPU")
 
     print(f"\n=== Midiendo GPU ===")
     t_gpu, e_gpu = measure_time_energy(op, params, "GPU")
 
-    print("\n=== Resolviendo ILP con CPLEX ===")
+    print("\n=== ILP con CPLEX ===")
     prob = pulp.LpProblem("placement", pulp.LpMinimize)
     x_cpu = pulp.LpVariable("x_cpu", cat="Binary")
     x_gpu = pulp.LpVariable("x_gpu", cat="Binary")
@@ -155,12 +138,11 @@ def parse_args():
     p.add_argument("--K", type=int)
     p.add_argument("--rows", type=int)
     p.add_argument("--nnz", type=int)
-    p.add_argument("--alpha", type=float, default=1.0)
-    p.add_argument("--beta", type=float, default=0.001)
-    p.add_argument("--repeats", type=int, default=3)
+    p.add_argument("--alpha", type=float)
+    p.add_argument("--beta", type=float)
+    p.add_argument("--repeats", type=int)
     p.add_argument("--print-json", action="store_true")
     return p.parse_args()
-
 
 def main():
     args = parse_args()
@@ -203,6 +185,6 @@ if __name__ == "__main__":
     main()
 
 # Ejemplos:
-# python ilp_cplex.py --op GEMM --M 1024 --N 1024 --K 1024
-# python ilp_cplex.py --op SpMV --rows 1000000 --nnz 5000000
-# python ilp_cplex.py --op FFT --N 1048576
+# python ilp_cplex.py --op GEMM --M 1024 --N 1024 --K 1024 --alpha 0.5 --beta 0.5
+# python ilp_cplex.py --op SpMV --rows 1000000 --nnz 5000000 --alpha 0.5 --beta 0.5
+# python ilp_cplex.py --op FFT --N 1048576 --alpha 0.5 --beta 0.5

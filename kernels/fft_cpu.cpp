@@ -7,7 +7,7 @@
 
 using namespace std;
 
-// Iterative in-place Radix-2 Cooley-Tukey FFT
+// Radix-2 Cooley-Tukey FFT
 void fft(vector<complex<double>>& a) {
     int n = a.size();
     int logn = 0;
