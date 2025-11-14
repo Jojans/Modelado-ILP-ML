@@ -7,33 +7,34 @@
 
 using namespace std;
 
-// Radix-2 Cooley-Tukey FFT
+// Radix-2 Cooley–Tukey FFT
 void fft(vector<complex<double>>& a) {
     int n = a.size();
     int logn = 0;
     while ((1 << logn) < n) logn++;
 
-    // Bit reversal permutation
+    // Bit-reversal permutation
     for (int i = 1, j = 0; i < n; i++) {
         int bit = n >> 1;
-        for (; j & bit; bit >>= 1)
-            j ^= bit;
+        while (j & bit) { j ^= bit; bit >>= 1; }
         j ^= bit;
-        if (i < j)
-            swap(a[i], a[j]);
+        if (i < j) swap(a[i], a[j]);
     }
 
     // Iterative FFT
     for (int len = 2; len <= n; len <<= 1) {
         double ang = -2 * M_PI / len;
         complex<double> wlen(cos(ang), sin(ang));
+
         for (int i = 0; i < n; i += len) {
             complex<double> w(1);
             for (int j = 0; j < len / 2; j++) {
                 complex<double> u = a[i + j];
-                complex<double> v = a[i + j + len / 2] * w;
+                complex<double> v = a[i + j + len/2] * w;
+
                 a[i + j] = u + v;
-                a[i + j + len / 2] = u - v;
+                a[i + j + len/2] = u - v;
+
                 w *= wlen;
             }
         }
@@ -48,7 +49,7 @@ int main(int argc, char** argv) {
 
     int N = atoi(argv[1]);
     if ((N & (N - 1)) != 0) {
-        cerr << "N debe ser una potencia de 2\n";
+        cerr << "N debe ser potencia de 2\n";
         return 1;
     }
 
@@ -62,6 +63,16 @@ int main(int argc, char** argv) {
     auto t1 = chrono::high_resolution_clock::now();
 
     double elapsed = chrono::duration<double>(t1 - t0).count();
-    cout << elapsed << endl;
-    return 0;
+
+    double flops = 5.0 * N * log2((double)N);
+    double gflops = flops / (elapsed * 1e9);
+
+    size_t bytes = (size_t)N * sizeof(complex<double>) * log2(N) * 2;
+    double bandwidth = bytes / (elapsed * 1e9);
+
+    cout << "Tiempo (s): " << elapsed << "\n";
+    cout << "GFLOPs: " << gflops << "\n";
+    cout << "Bandwidth aproximado (GB/s): " << bandwidth << "\n";
+
+    return 0; // g++ fft_cpu.cpp -O2 -o fft_cpu
 }

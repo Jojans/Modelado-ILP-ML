@@ -43,8 +43,17 @@ int main(int argc, char** argv) {
     gemm_naive(M, N, K, A.data(), B.data(), C.data());
     auto t1 = std::chrono::high_resolution_clock::now();
 
-    double elapsed = std::chrono::duration<double>(t1 - t0).count();
-    std::cout << elapsed << std::endl;
+    double seconds = std::chrono::duration<double>(t1 - t0).count();
 
-    return 0;
+    double flops = 2.0 * M * N * K;
+    double gflops = flops / (seconds * 1e9);
+
+    double bytes = (double)(M*K + K*N + M*N) * sizeof(real);
+    double gbs = bytes / (seconds * 1e9);
+
+    std::cout << "Tiempo (s): " << seconds << "\n";
+    std::cout << "GFLOPS: " << gflops << "\n";
+    std::cout << "Bandwidth aproximado (GB/s): " << gbs << "\n";
+
+    return 0; // g++ gemm_cpu.cpp -O2 -o gemm_cpu
 }

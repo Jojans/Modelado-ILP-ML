@@ -10,41 +10,36 @@ struct Complex {
 };
 
 __device__ Complex complexAdd(Complex a, Complex b) {
-    Complex c;
-    c.real = a.real + b.real;
-    c.imag = a.imag + b.imag;
-    return c;
+    return {a.real + b.real, a.imag + b.imag};
 }
 
 __device__ Complex complexSub(Complex a, Complex b) {
-    Complex c;
-    c.real = a.real - b.real;
-    c.imag = a.imag - b.imag;
-    return c;
+    return {a.real - b.real, a.imag - b.imag};
 }
 
 __device__ Complex complexMul(Complex a, Complex b) {
-    Complex c;
-    c.real = a.real * b.real - a.imag * b.imag;
-    c.imag = a.real * b.imag + a.imag * b.real;
-    return c;
+    return {
+        a.real * b.real - a.imag * b.imag,
+        a.real * b.imag + a.imag * b.real
+    };
 }
 
 __global__ void fftKernel(Complex *data, int n, int step) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int m = step * 2;
 
     if (i < n / 2) {
         int j = i % step;
         int k = i - j;
+
         Complex t = data[k + j];
         Complex u = data[k + j + step];
+
         float angle = -PI * j / step;
         Complex w = {cosf(angle), sinf(angle)};
         Complex v = complexMul(w, u);
 
-        data[k + j] = complexAdd(t, v);
-        data[k + j + step] = complexSub(t, v);
+        data[k + j]         = complexAdd(t, v);
+        data[k + j + step]  = complexSub(t, v);
     }
 }
 
@@ -66,7 +61,7 @@ void fftGPU(Complex *h_data, int N) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        printf("Uso: fft_gpu N\n");
+        printf("Uso: fft_gpu N\n"); // N debe ser una potencia de 2, ej: 256, 512, 1024, 2048, 4096
         return 1;
     }
     int N = atoi(argv[1]);
@@ -88,10 +83,21 @@ int main(int argc, char **argv) {
 
     float ms = 0.0f;
     cudaEventElapsedTime(&ms, start, stop);
-    printf("%f\n", ms / 1000.0f);
+    double seconds = ms / 1000.0;
+
+    double flops = 5.0 * N * log2((double)N);
+    double gflops = flops / (seconds * 1e9);
+
+    double bytes = 16.0 * N * log2((double)N);
+    double gbs = bytes / (seconds * 1e9);
+
+    printf("Tiempo (s): %f\n", seconds);
+    printf("GFLOPS: %f\n", gflops);
+    printf("Bandwidth aproximado (GB/s): %f\n", gbs);
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
     free(data);
-    return 0;
+
+    return 0; // nvcc fft_gpu.cu -o fft_gpu.exe
 }

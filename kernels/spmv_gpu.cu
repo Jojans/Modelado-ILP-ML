@@ -22,8 +22,8 @@ int main(int argc, char** argv) {
     int rows = atoi(argv[1]);
     int nnz  = atoi(argv[2]);
 
-    std::vector<int> h_row_ptr(rows + 1);
-    std::vector<int> h_col_idx(nnz);
+    std::vector<int>   h_row_ptr(rows + 1);
+    std::vector<int>   h_col_idx(nnz);
     std::vector<float> h_values(nnz);
     std::vector<float> h_x(rows, 1.0f);
     std::vector<float> h_y(rows, 0.0f);
@@ -54,9 +54,10 @@ int main(int argc, char** argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
 
-    cudaEventRecord(start);
     int blockSize = 256;
     int gridSize = (rows + blockSize - 1) / blockSize;
+
+    cudaEventRecord(start);
     spmv_kernel<<<gridSize, blockSize>>>(rows, d_row_ptr, d_col_idx, d_values, d_x, d_y);
     cudaEventRecord(stop);
 
@@ -66,7 +67,17 @@ int main(int argc, char** argv) {
     float milliseconds = 0.0f;
     cudaEventElapsedTime(&milliseconds, start, stop);
 
-    std::cout << (milliseconds / 1000.0) << std::endl; // segundos
+    double seconds = milliseconds / 1000.0;
+
+    double flops = 2.0 * nnz;
+    double gflops = flops / (seconds * 1e9);
+
+    double bytes = nnz * (4 + 4 + 4) + rows * 4; // values, col_idx, x + y write
+    double gbs = bytes / (seconds * 1e9);
+
+    std::cout << "Tiempo (s): " << seconds << "\n";
+    std::cout << "GFLOPS: " << gflops << "\n";
+    std::cout << "Bandwidth aproximado (GB/s): " << gbs << "\n";
 
     cudaFree(d_row_ptr);
     cudaFree(d_col_idx);
@@ -74,5 +85,5 @@ int main(int argc, char** argv) {
     cudaFree(d_x);
     cudaFree(d_y);
 
-    return 0;
+    return 0; // nvcc spmv_gpu.cu -o spmv_gpu.exe
 }
